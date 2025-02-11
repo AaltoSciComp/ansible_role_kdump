@@ -1,0 +1,174 @@
+---
+    - name: Install kexec-tools using dnf
+      dnf:
+        name: kexec-tools
+        state: present
+        
+    - name: Force reinstall of kernel-core
+      command: dnf reinstall -y kernel-core
+
+
+    - name: Gathering kdump service status
+      ansible.builtin.systemd:
+        name: kdump
+      register: kdump_service_status
+
+    - name: Verify kdump service status
+      ansible.builtin.debug:
+        msg: "Failure the task when kdump service is masked, please unmask the service(systemctl unmask kdump) and re-run the playbook."
+      failed_when:
+        - kdump_service_status.status.LoadState == 'masked'
+
+    - name: Get stats of the kdump.conf file
+      ansible.builtin.stat:
+        path: /etc/kdump.conf
+      register: kdump_conf
+
+    - name: Verify /etc/kdump.conf existing
+      ansible.builtin.debug:
+        msg: "Failure the task when /etc/kdump.conf not exists, please re-install kexec-tools then re-run the playbook."
+      failed_when:
+        - not kdump_conf.stat.exists
+
+    - name: Creating kdump.conf file
+      ansible.builtin.template:
+        src: kdump.conf.j2
+        dest: /etc/kdump.conf
+        backup: yes
+
+# We do this explicitly with ansible
+#    - name: Propagate password for ssh
+#      ansible.builtin.shell:
+#        cmd: kdumpctl propagate
+#      when:  dumpTarget == 'SSH'
+
+    - name: Slurp local SSH private key file
+      ansible.builtin.slurp:
+        src: "{{ kdump_ssh_authorized_key_private }}"
+      delegate_to: localhost
+      register: slurped_private_key
+
+    - name: Decode the private key content
+      set_fact:
+        private_key_content: "{{ slurped_private_key.content | b64decode }}"
+
+    - name: Ensure .ssh directory exists for root
+      file:
+        path: "/root/.ssh"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Copy private ssh-key for root
+      copy:
+        content: "{{ private_key_content }}"
+        dest: "{{ kdump_private_key_dest }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+
+
+
+
+    - name: Enable and restart kdump service
+      ansible.builtin.service:
+        name: kdump
+        enabled: yes
+        state: restarted
+
+    - name: Make a backup of /etc/sysctl.conf
+      ansible.builtin.copy:
+        src: /etc/sysctl.conf
+        dest: "/etc/sysctl.conf.kdumphelper.{{ ansible_date_time.date }}-{{ ansible_date_time.time }}"
+        backup: yes
+        remote_src: true
+
+    - block:
+      - name: Add comments in sysctl.conf for system hang
+        ansible.builtin.lineinfile:
+          path: /etc/sysctl.conf
+          line: "{{ item }}"
+          create: yes
+        with_items:
+          - "# Panic on sysrq and nmi button, magic button alt+printscreen+c or nmi button could be pressed to collect a vmcore"
+          - "# Added by kdumphelper, more information about it can be found in solution below"
+          - "# https://access.redhat.com/solutions/2023"
+          - "# https://access.redhat.com/solutions/125103"
+
+      - name: Set sysctl for system hang
+        ansible.posix.sysctl:
+          name: "{{ item }}"
+          value: "1"
+          state: present
+          reload: true
+        with_items:
+          - "kernel.sysrq"
+          - "kernel.unknown_nmi_panic"
+          - "kernel.panic_on_io_nmi"
+          - "kernel.panic_on_unrecovered_nmi"
+      when: kdump_isSystemHangChecked
+
+    - block:
+      - name: Add comments in sysctl.conf for ProcessDState
+        ansible.builtin.lineinfile:
+          path: /etc/sysctl.conf
+          line: "{{ item }}"
+          create: yes
+        with_items:
+          - "# Panic on hung tasks."
+          - "# Added by kdumphelper, more information about it can be found in solution below"
+          - "# https://access.redhat.com/solutions/60572"
+
+      - name: Set sysctl for ProcessDState
+        ansible.posix.sysctl:
+          name: "{{ item }}"
+          value: "1"
+          state: present
+          reload: true
+        with_items:
+          - "kernel.hung_task_panic"
+      when: kdump_isProcessDStateChecked
+
+    - block:
+      - name: Add comments in sysctl.conf for soft lockup
+        ansible.builtin.lineinfile:
+          path: /etc/sysctl.conf
+          line: "{{ item }}"
+          create: yes
+        with_items:
+          - "# Panic on soft lockups."
+          - "# Added by kdumphelper, more information about it can be found in solution below"
+          - "# https://access.redhat.com/solutions/19541"
+
+      - name: Set sysctl for soft lockup
+        ansible.posix.sysctl:
+          name: "{{ item }}"
+          value: "1"
+          state: present
+          reload: true
+        with_items:
+          - "kernel.softlockup_panic"
+      when: kdump_isSoftLockupChecked
+
+    - block:
+      - name: Add comments in sysctl.conf for OOM
+        ansible.builtin.lineinfile:
+          path: /etc/sysctl.conf
+          line: "{{ item }}"
+          create: yes
+        with_items:
+          - "# Panic on out of memory."
+          - "# Added by kdumphelper, more information about it can be found in solution below"
+          - "# https://access.redhat.com/solutions/20985"
+
+      - name: Set sysctl for OOM
+        ansible.posix.sysctl:
+          name: "{{ item }}"
+          value: "1"
+          state: present
+          reload: true
+        with_items:
+          - "vm.panic_on_oom"
+      when: kdump_isOOMChecked

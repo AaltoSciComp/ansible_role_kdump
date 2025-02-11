@@ -1,0 +1,18 @@
+---
+
+# Save the ssh private key in
+   kdump_private_key_dest: /root/.ssh/kdump_id_rsa
+
+   kdump_isSystemHangChecked: true
+   kdump_isProcessDStateChecked: false
+   kdump_isSoftLockupChecked: false
+   kdump_isOOMChecked: false
+   kdump_operationOnFailure: halt
+   kdump_dumpLevel: 31
+   
+   kdump_dumpTarget: 'SSH'
+   kdump_dumpPath: '/var/crash'
+
+   kdump_user: dumper
+   kdump_server: junkyard
+   kdump_server_ip: 1.2.3.4

@@ -1,0 +1,20 @@
+{% if kdump_dumpTarget == 'Local Filesystem' %}
+path {{ dumpPath }}
+{% endif %}
+{% if kdump_dumpTarget == 'Raw Device' %}
+raw {{ rawDevice }}
+{% endif %}
+{% if kdump_dumpTarget == 'NFS' %}
+path {{ dumpPath }}
+nfs {{ nfsServer }}
+{% endif %}
+{% if kdump_dumpTarget == 'SSH' %}
+path {{ kdump_dumpPath }}
+ssh {{ kdump_user }}@{{ kdump_server_ip }}
+{% endif %}
+{% if kdump_dumpTarget == 'SSH' %}
+core_collector makedumpfile -c -F --message-level 7 -d {{ kdump_dumpLevel }}
+{% else %}
+core_collector makedumpfile -c --message-level 7 -d dump_level={{ kdump_dumpLevel }}
+{% endif %}
+default {{ kdump_operationOnFailure }}
