@@ -1,9 +1,10 @@
 ---
+
     - name: Install kexec-tools using dnf
       dnf:
         name: kexec-tools
         state: present
-        
+
     - name: Force reinstall of kernel-core
       command: dnf reinstall -y kernel-core
 
@@ -85,6 +86,10 @@
         backup: yes
         remote_src: true
 
+    - name: Print the connection method in case of debugging needed for containers
+      debug:
+        msg: "Current connection method: {{ ansible_connection }}"
+
     - block:
       - name: Add comments in sysctl.conf for system hang
         ansible.builtin.lineinfile:
@@ -102,7 +107,7 @@
           name: "{{ item }}"
           value: "1"
           state: present
-          reload: true
+          reload: "{{ 'podman' not in ansible_connection }}"
         with_items:
           - "kernel.sysrq"
           - "kernel.unknown_nmi_panic"
@@ -126,7 +131,7 @@
           name: "{{ item }}"
           value: "1"
           state: present
-          reload: true
+          reload:  "{{ 'podman' not in ansible_connection  }}"
         with_items:
           - "kernel.hung_task_panic"
       when: kdump_isProcessDStateChecked
@@ -147,7 +152,7 @@
           name: "{{ item }}"
           value: "1"
           state: present
-          reload: true
+          reload:  "{{ 'podman' not in ansible_connection  }}"
         with_items:
           - "kernel.softlockup_panic"
       when: kdump_isSoftLockupChecked
@@ -168,7 +173,7 @@
           name: "{{ item }}"
           value: "1"
           state: present
-          reload: true
+          reload:  "{{ 'podman' not in ansible_connection }}"
         with_items:
           - "vm.panic_on_oom"
       when: kdump_isOOMChecked
